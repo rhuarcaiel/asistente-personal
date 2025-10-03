@@ -8,16 +8,17 @@ const openai = new OpenAI({
 
 // Esta es la función que se ejecutará cuando alguien llame a tu URL
 export default async function handler(req, res) {
-// Añadir cabeceras CORS para permitir peticiones desde cualquier origen
-res.setHeader('Access-Control-Allow-Credentials', true);
-res.setHeader('Access-Control-Allow-Origin', '*');
-res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
+  // Añadir cabeceras CORS para permitir peticiones desde cualquier origen
+  res.setHeader('Access-Control-Allow-Credentials', true);
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
 
-// Handle pre-flight requests for CORS
-if (req.method === 'OPTIONS') {
-  res.status(200).end();
-  return;
-}
+  // Handle pre-flight requests for CORS
+  if (req.method === 'OPTIONS') {
+    res.status(200).end();
+    return;
+  }
+
   // Solo aceptamos peticiones POST
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Método no permitido' });
@@ -56,5 +57,4 @@ if (req.method === 'OPTIONS') {
     console.error('Error al llamar a OpenAI:', error);
     res.status(500).json({ error: 'Fallo al procesar la solicitud con la IA' });
   }
-
 }
