@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mi Asistente Personal</title>
+    <style>
+        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; background-color: #f0f0f0; }
+        button { padding: 20px 40px; font-size: 1.2em; cursor: pointer; border-radius: 10px; border: none; background-color: #007bff; color: white; }
+        #resultado { margin-top: 20px; padding: 15px; border: 1px solid #ccc; border-radius: 5px; background-color: white; min-height: 50px; width: 80%; max-width: 400px; text-align: center; white-space: pre-line; }
+    </style>
+</head>
+<body>
+    <h1>Mi Asistente Personal</h1>
+    <button id="botonHablar">🎤 Hablar</button>
+    <div id="resultado">Di algo...</div>
+
+    <script>
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) { alert('Tu navegador no soporta la API de voz. Prueba en Chrome.'); }
+
+        const recognition = new SpeechRecognition();
+        recognition.lang = "es-ES";
+        recognition.interimResults = false;
+
+        const boton = document.getElementById('botonHablar');
+        const resultado = document.getElementById('resultado');
+
+        // ¡IMPORTANTE! Reemplaza esto con la URL que te dé Vercel
+        const BACKEND_URL = 'https://tu-proyecto.vercel.app/api/procesar-ia';
+
+        boton.addEventListener('click', () => {
+            recognition.start();
+            boton.textContent = '🔴 Escuchando...';
+            resultado.textContent = 'Estoy escuchando...';
+        });
+
+        recognition.onresult = async (event) => {
+            const transcript = event.results[0][0].transcript;
+            resultado.textContent = `Has dicho: "${transcript}".\n\nProcesando con IA...`;
+            boton.textContent = '🎤 Hablar';
+
+            try {
+                const response = await fetch(BACKEND_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userText: transcript }),
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Error del servidor: ${response.status}`);
+                }
+
+                const data = await response.json();
+                
+                // Mostramos el resultado de forma clara
+                resultado.textContent = `Acción: ${data.accion}\nTarea: ${data.tarea}\nFecha: ${data.fecha || 'No especificada'}\nHora: ${data.hora || 'No especificada'}`;
+
+            } catch (error) {
+                console.error('Error al contactar la IA:', error);
+                resultado.textContent = 'Error al procesar la solicitud. Revisa la consola.';
+            }
+        };
+
+        recognition.onerror = (event) => {
+            resultado.textContent = `Error de voz: ${event.error}`;
+            boton.textContent = '🎤 Hablar';
+        };
+    </script>
+</body>
+</html>
