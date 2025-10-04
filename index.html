@@ -52,16 +52,18 @@
         // URL de tu backend
         const BACKEND_URL = 'https://asistente-personal-eta.vercel.app';
 
-        // --- Lógica de Google Sign-In (NUEVO) ---
-        window.onload = () => {
-            google.accounts.id.initialize({
-                client_id: GOOGLE_CLIENT_ID,
-                callback: handleCredentialResponse
-            });
-            botonGoogle.onclick = () => {
-                google.accounts.id.prompt(); // Muestra el diálogo de Google
-            }
-        };
+       // --- Lógica de Google Sign-In ---
+window.onload = () => {
+    google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: handleCredentialResponse,
+        // --- AÑADIMOS ESTA LÍNEA PARA DEPURAR ---
+        log_level: 'debug' 
+    });
+    botonGoogle.onclick = () => {
+        google.accounts.id.prompt();
+    }
+};
 
         function handleCredentialResponse(response) {
     console.log("Encoded JWT ID token: " + response.credential);
@@ -125,5 +127,6 @@
     </script>
 </body>
 </html>
+
 
 
