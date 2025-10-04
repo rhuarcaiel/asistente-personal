@@ -4,16 +4,33 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mi Asistente Personal</title>
+    
+    <!-- Google Identity Services -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+
     <style>
         body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; background-color: #f0f0f0; }
-        button { padding: 20px 40px; font-size: 1.2em; cursor: pointer; border-radius: 10px; border: none; background-color: #007bff; color: white; }
+        button { padding: 15px 30px; font-size: 1em; cursor: pointer; border-radius: 10px; border: none; background-color: #007bff; color: white; margin: 5px; }
+        #botonGoogle { background-color: #4285F4; }
         #resultado { margin-top: 20px; padding: 15px; border: 1px solid #ccc; border-radius: 5px; background-color: white; min-height: 50px; width: 80%; max-width: 400px; text-align: center; white-space: pre-line; }
+        .hidden { display: none; }
     </style>
 </head>
 <body>
+
     <h1>Mi Asistente Personal</h1>
-    <button id="botonHablar">🎤 Hablar</button>
-    <div id="resultado">Di algo...</div>
+
+    <!-- SECCIÓN DE AUTENTICACIÓN (NUEVO) -->
+    <div id="auth-section">
+        <p>Para acceder a tu calendario, inicia sesión:</p>
+        <button id="botonGoogle">🔐 Iniciar sesión con Google</button>
+    </div>
+
+    <!-- SECCIÓN DE LA APP (AHORA OCULTA POR DEFECTO) -->
+    <div id="app-section" class="hidden">
+        <button id="botonHablar">🎤 Hablar</button>
+        <div id="resultado">Di algo...</div>
+    </div>
 
     <script>
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -23,37 +40,59 @@
         recognition.lang = "es-ES";
         recognition.interimResults = false;
 
-        const boton = document.getElementById('botonHablar');
+        const botonHablar = document.getElementById('botonHablar');
+        const botonGoogle = document.getElementById('botonGoogle');
         const resultado = document.getElementById('resultado');
+        const authSection = document.getElementById('auth-section');
+        const appSection = document.getElementById('app-section');
 
-        // ¡IMPORTANTE! Reemplaza esto con la URL que te dé Vercel
-        const BACKEND_URL = 'https://asistente-personal-eta.vercel.app/api/procesar-ia';
+        // ¡IMPORTANTE! Pega aquí tu ID de Cliente de Google
+        const GOOGLE_CLIENT_ID = 'TU_ID_DE_CLIENTE_DE_GOOGLE_AQUI';
 
-        boton.addEventListener('click', () => {
+        // URL de tu backend
+        const BACKEND_URL = 'https://asistente-personal-eta.vercel.app';
+
+        // --- Lógica de Google Sign-In (NUEVO) ---
+        window.onload = () => {
+            google.accounts.id.initialize({
+                client_id: GOOGLE_CLIENT_ID,
+                callback: handleCredentialResponse
+            });
+            botonGoogle.onclick = () => {
+                google.accounts.id.prompt(); // Muestra el diálogo de Google
+            }
+        };
+
+        function handleCredentialResponse(response) {
+            console.log("Encoded JWT ID token: " + response.credential);
+            // Por ahora, simplemente mostramos la app. Más tarde enviaremos este token a nuestro backend.
+            authSection.classList.add('hidden');
+            appSection.classList.remove('hidden');
+            resultado.textContent = '¡Sesión iniciada! Ya puedes usar el asistente.';
+        }
+
+        // --- Lógica del Asistente de Voz (sin cambios) ---
+        botonHablar.addEventListener('click', () => {
             recognition.start();
-            boton.textContent = '🔴 Escuchando...';
+            botonHablar.textContent = '🔴 Escuchando...';
             resultado.textContent = 'Estoy escuchando...';
         });
 
         recognition.onresult = async (event) => {
             const transcript = event.results[0][0].transcript;
             resultado.textContent = `Has dicho: "${transcript}".\n\nProcesando con IA...`;
-            boton.textContent = '🎤 Hablar';
+            botonHablar.textContent = '🎤 Hablar';
 
             try {
-                const response = await fetch(BACKEND_URL, {
+                const response = await fetch(`${BACKEND_URL}/api/procesar-ia`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ userText: transcript }),
                 });
 
-                if (!response.ok) {
-                    throw new Error(`Error del servidor: ${response.status}`);
-                }
+                if (!response.ok) throw new Error(`Error del servidor: ${response.status}`);
 
                 const data = await response.json();
-                
-                // Mostramos el resultado de forma clara
                 resultado.textContent = `Acción: ${data.accion}\nTarea: ${data.tarea}\nFecha: ${data.fecha || 'No especificada'}\nHora: ${data.hora || 'No especificada'}`;
 
             } catch (error) {
@@ -64,9 +103,8 @@
 
         recognition.onerror = (event) => {
             resultado.textContent = `Error de voz: ${event.error}`;
-            boton.textContent = '🎤 Hablar';
+            botonHablar.textContent = '🎤 Hablar';
         };
     </script>
 </body>
-
 </html>
