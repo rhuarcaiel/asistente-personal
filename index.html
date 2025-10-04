@@ -64,12 +64,29 @@
         };
 
         function handleCredentialResponse(response) {
-            console.log("Encoded JWT ID token: " + response.credential);
-            // Por ahora, simplemente mostramos la app. Más tarde enviaremos este token a nuestro backend.
+    console.log("Encoded JWT ID token: " + response.credential);
+
+    // Enviamos el token a nuestro backend para que lo verifique
+    fetch(`${BACKEND_URL}/api/procesar-ia`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: response.credential }) // Enviamos el token
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.message === 'Login exitoso') {
             authSection.classList.add('hidden');
             appSection.classList.remove('hidden');
-            resultado.textContent = '¡Sesión iniciada! Ya puedes usar el asistente.';
+            resultado.textContent = `¡Sesión iniciada como ${data.user}!`;
+        } else {
+            resultado.textContent = 'Error en el login: ' + data.error;
         }
+    })
+    .catch(error => {
+        console.error('Error al verificar token:', error);
+        resultado.textContent = 'Fallo al contactar el servidor para verificar la sesión.';
+    });
+}
 
         // --- Lógica del Asistente de Voz (sin cambios) ---
         botonHablar.addEventListener('click', () => {
@@ -108,4 +125,5 @@
     </script>
 </body>
 </html>
+
 
