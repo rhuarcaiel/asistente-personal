@@ -11,6 +11,7 @@ export default async function (req, res) {
     if (req.method === 'OPTIONS') return res.status(200).end();
     if (req.method !== 'POST') return res.status(405).json({ error: 'Método no permitido' });
 
+    // Leer y parsear el cuerpo de la petición
     let body;
     try {
         const chunks = [];
@@ -34,7 +35,7 @@ export default async function (req, res) {
         }
     }
 
-    // --- CASO 2: Petición del Asistente de Voz (CON INTENCIÓN IMPLÍCITA) ---
+    // --- CASO 2: Petición del Asistente de Voz (CON INTENCIÓN IMPLÍCITA Y MÁS DEPURACIÓN) ---
     if (body.userText) {
         try {
             // --- NUEVO PROMPT "CONSCIENTE DEL CONTEXTO" ---
@@ -60,11 +61,13 @@ export default async function (req, res) {
             });
             const aiResponse = JSON.parse(completion.choices[0].message.content);
 
-            // Si la IA no puede extraer un evento, lo indicamos.
+            // --- NUEVA VALIDACIÓN CHIVATA ---
             if (!aiResponse.summary) {
-                return res.status(200).json({ success: false, error: 'No he podido entender un evento claro en tu petición.' });
+                return res.status(400).json({ success: false, error: 'La IA no pudo entender un evento claro.' });
             }
-
+            if (!aiResponse.start_datetime) {
+                return res.status(400).json({ success: false, error: 'La IA no proporcionó una fecha y hora válidas.' });
+            }
             if (!body.token) {
                 return res.status(400).json({ success: false, error: 'No se proporcionó token de Google.' });
             }
@@ -90,15 +93,23 @@ export default async function (req, res) {
                 event.recurrence = [rrule];
             }
 
+            // --- LLAMADA A GOOGLE CON MÁS DETALLES ---
+            console.log('Enviando evento a Google Calendar:', JSON.stringify(event, null, 2));
+
             const calendarResponse = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${body.token}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify(event),
             });
 
+            // --- SI FALLA, LEEMOS EL ERROR EXACTO DE GOOGLE ---
             if (!calendarResponse.ok) {
-                const errorData = await calendarResponse.json();
-                throw new Error(`Error de Calendar: ${errorData.error.message}`);
+                const errorBody = await calendarResponse.text();
+                console.error('Error de Google Calendar API:', calendarResponse.status, errorBody);
+                return res.status(500).json({ 
+                    success: false, 
+                    error: `Error de Google Calendar: ${calendarResponse.status}. Detalles: ${errorBody}` 
+                });
             }
 
             const createdEvent = await calendarResponse.json();
