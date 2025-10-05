@@ -1,66 +1,78 @@
+// api/procesar-ia.js
 import { OpenAI } from 'openai';
-import fetch from 'node-fetch'; // Importamos node-fetch
 
+// Vercel usa Node.js 18+ → fetch ya está disponible globalmente
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-export default async function handler(req, res) {
-  // Cabeceras CORS
-  res.setHeader('Access-Control-Allow-Credentials', true);
+export default async function (req, res) {
+  // CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  if (req.method === 'OPTIONS') { res.status(200).end(); return; }
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
 
-  // --- NUEVA LÓGICA: Verificar ACCESS_TOKEN y Acceder a Calendar ---
-  if (req.body && req.body.access_token) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Método no permitido' });
+  }
+
+  // Leer y parsear el cuerpo de la petición
+  let body;
+  try {
+    const chunks = [];
+    for await (const chunk of req) {
+      chunks.push(chunk);
+    }
+    const data = Buffer.concat(chunks).toString();
+    body = JSON.parse(data || '{}');
+  } catch (e) {
+    return res.status(400).json({ error: 'JSON inválido' });
+  }
+
+  // --- Verificar token de Google ---
+  if (body.access_token) {
     try {
-      const token = req.body.access_token;
-
-      // 1. Obtener info del usuario para verificar el token
-      const userInfoResponse = await fetch(`https://www.googleapis.com/oauth2/v3/userinfo`, {
-        headers: { Authorization: `Bearer ${token}` }
+      const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: { Authorization: `Bearer ${body.access_token}` }
       });
-      if (!userInfoResponse.ok) throw new Error('Token inválido al obtener userinfo.');
-      const userInfo = await userInfoResponse.json();
+      if (!userInfoResponse.ok) throw new Error('Token inválido');
 
-      // 2. Verificar acceso a Calendar API (esto confirma que el scope es correcto)
       const calendarResponse = await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList', {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${body.access_token}` }
       });
-      if (!calendarResponse.ok) throw new Error('No se pudo acceder a Calendar API.');
+      if (!calendarResponse.ok) throw new Error('Sin acceso a Calendar');
 
-      console.log('Usuario autenticado con permisos de Calendar:', userInfo.email);
-      
+      const userInfo = await userInfoResponse.json();
       return res.status(200).json({
         message: 'Acceso a Calendar correcto',
-        user: userInfo.email,
-        access_token: token // Devolvemos el token para poder usarlo luego
+        user: userInfo.email
       });
-
     } catch (error) {
-      console.error('Error al verificar access_token:', error);
-      return res.status(401).json({ error: 'Token de acceso inválido o expirado' });
+      console.error('Error al verificar token:', error.message);
+      return res.status(401).json({ error: 'Token inválido o sin permisos para Calendar' });
     }
   }
 
-  // --- LÓGICA EXISTENTE DEL ASISTENTE (si no hay token) ---
-  if (req.method !== 'POST' || !req.body.userText) {
-    return res.status(400).json({ error: 'Petición inválida' });
+  // --- Procesar con OpenAI ---
+  if (body.userText) {
+    try {
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: 'Eres un asistente experto que devuelve JSON con { "accion": "...", "tarea": "...", "fecha": "...", "hora": "..." }' },
+          { role: 'user', content: body.userText }
+        ],
+        response_format: { type: 'json_object' }
+      });
+      const aiResponse = JSON.parse(completion.choices[0].message.content);
+      return res.status(200).json(aiResponse);
+    } catch (error) {
+      console.error('Error OpenAI:', error);
+      return res.status(500).json({ error: 'Fallo al procesar con IA' });
+    }
   }
 
-  const { userText } = req.body;
-  try {
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini", messages: [
-        { role: "system", content: `Eres un asistente experto...` },
-        { role: "user", content: userText }
-      ], response_format: { type: "json_object" }
-    });
-    const aiResponse = JSON.parse(completion.choices[0].message.content);
-    res.status(200).json(aiResponse);
-  } catch (error) {
-    console.error('Error al llamar a OpenAI:', error);
-    res.status(500).json({ error: 'Fallo al procesar la solicitud con la IA' });
-  }
+  return res.status(400).json({ error: 'Falta access_token o userText' });
 }
