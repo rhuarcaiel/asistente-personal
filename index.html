@@ -4,10 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mi Asistente Personal</title>
-    
-    <!-- Google Identity Services -->
     <script src="https://accounts.google.com/gsi/client" async defer></script>
-
     <style>
         body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; background-color: #f0f0f0; }
         button { padding: 15px 30px; font-size: 1em; cursor: pointer; border-radius: 10px; border: none; background-color: #007bff; color: white; margin: 5px; }
@@ -17,16 +14,13 @@
     </style>
 </head>
 <body>
-
     <h1>Mi Asistente Personal</h1>
-
-    <!-- SECCIÓN DE AUTENTICACIÓN (NUEVO) -->
     <div id="auth-section">
         <p>Para acceder a tu calendario, inicia sesión:</p>
-        <button id="botonGoogle">🔐 Iniciar sesión con Google</button>
+        <div id="botonGoogle">
+            <button id="googleLoginBtn">Iniciar sesión con Google Calendar</button>
+        </div>
     </div>
-
-    <!-- SECCIÓN DE LA APP (AHORA OCULTA POR DEFECTO) -->
     <div id="app-section" class="hidden">
         <button id="botonHablar">🎤 Hablar</button>
         <div id="resultado">Di algo...</div>
@@ -41,55 +35,46 @@
         recognition.interimResults = false;
 
         const botonHablar = document.getElementById('botonHablar');
-        const botonGoogle = document.getElementById('botonGoogle');
         const resultado = document.getElementById('resultado');
         const authSection = document.getElementById('auth-section');
         const appSection = document.getElementById('app-section');
 
-        // ¡IMPORTANTE! Pega aquí tu ID de Cliente de Google
-        const GOOGLE_CLIENT_ID = '730540890311-2n0tj0q7f5dp3v8j6h16n1rmkjqt8m98.apps.googleusercontent.com';
-
-        // URL de tu backend
+        const GOOGLE_CLIENT_ID = 'TU_ID_DE_CLIENTE_DE_GOOGLE_AQUI';
         const BACKEND_URL = 'https://asistente-personal-eta.vercel.app';
+        let accessToken = ''; // Variable global para guardar el token
 
-       // --- Lógica de Google Sign-In ---
-window.onload = () => {
-    google.accounts.id.initialize({
-        client_id: GOOGLE_CLIENT_ID,
-        callback: handleCredentialResponse,
-        // --- AÑADIMOS ESTA LÍNEA PARA DEPURAR ---
-        log_level: 'debug' 
-    });
-    botonGoogle.onclick = () => {
-        google.accounts.id.prompt();
-    }
-};
+        // === Nuevo flujo OAuth 2.0 con scopes (La solución de tu amigo) ===
+        function iniciarSesionConGoogle() {
+            const client = google.accounts.oauth2.initTokenClient({
+                client_id: GOOGLE_CLIENT_ID,
+                scope: 'https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/userinfo.email',
+                callback: async (tokenResponse) => {
+                    console.log('Access token recibido:', tokenResponse.access_token);
+                    accessToken = tokenResponse.access_token; // Guardamos el token
 
-        function handleCredentialResponse(response) {
-    console.log("Encoded JWT ID token: " + response.credential);
+                    const res = await fetch(`${BACKEND_URL}/api/procesar-ia`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ access_token: tokenResponse.access_token })
+                    });
 
-    // Enviamos el token a nuestro backend para que lo verifique
-    fetch(`${BACKEND_URL}/api/procesar-ia`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: response.credential }) // Enviamos el token
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (data.message === 'Login exitoso') {
-            authSection.classList.add('hidden');
-            appSection.classList.remove('hidden');
-            resultado.textContent = `¡Sesión iniciada como ${data.user}!`;
-        } else {
-            resultado.textContent = 'Error en el login: ' + data.error;
+                    const data = await res.json();
+                    if (data.message) {
+                        authSection.classList.add('hidden');
+                        appSection.classList.remove('hidden');
+                        resultado.textContent = `Acceso concedido a Calendar para ${data.user}`;
+                    } else {
+                        resultado.textContent = 'Error al iniciar sesión con Google Calendar: ' + data.error;
+                    }
+                }
+            });
+            client.requestAccessToken();
         }
-    })
-    .catch(error => {
-        console.error('Error al verificar token:', error);
-        resultado.textContent = 'Fallo al contactar el servidor para verificar la sesión.';
-    });
-}
 
+        window.onload = () => {
+            document.getElementById('googleLoginBtn').onclick = iniciarSesionConGoogle;
+        };
+        
         // --- Lógica del Asistente de Voz (sin cambios) ---
         botonHablar.addEventListener('click', () => {
             recognition.start();
@@ -108,12 +93,8 @@ window.onload = () => {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ userText: transcript }),
                 });
-
-                if (!response.ok) throw new Error(`Error del servidor: ${response.status}`);
-
                 const data = await response.json();
                 resultado.textContent = `Acción: ${data.accion}\nTarea: ${data.tarea}\nFecha: ${data.fecha || 'No especificada'}\nHora: ${data.hora || 'No especificada'}`;
-
             } catch (error) {
                 console.error('Error al contactar la IA:', error);
                 resultado.textContent = 'Error al procesar la solicitud. Revisa la consola.';
@@ -127,6 +108,3 @@ window.onload = () => {
     </script>
 </body>
 </html>
-
-
-
