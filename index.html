@@ -19,9 +19,9 @@
     const BACKEND_URL = 'https://asistente-personal-eta.vercel.app';
     let accessToken = '';
     let lastProposal = null;
-    let isProcessing = false; // <-- NUEVA BANDERA PARA EVITAR DOBLES CLICS
+    let isProcessing = false;
 
-    // --- Lógica de Google Sign-In (sin cambios) ---
+    // --- Lógica de Google Sign-In ---
     function iniciarSesionConGoogle() {
         const client = google.accounts.oauth2.initTokenClient({
             client_id: GOOGLE_CLIENT_ID,
@@ -30,7 +30,8 @@
                 console.log('Access token recibido:', tokenResponse.access_token);
                 accessToken = tokenResponse.access_token;
                 const res = await fetch(`${BACKEND_URL}/api/procesar-ia`, {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ action: 'login', token: tokenResponse.access_token })
                 });
                 const data = await res.json();
@@ -45,16 +46,19 @@
         });
         client.requestAccessToken();
     }
-    window.onload = () => { document.getElementById('googleLoginBtn').onclick = iniciarSesionConGoogle; };
+
+    window.onload = () => {
+        document.getElementById('googleLoginBtn').onclick = iniciarSesionConGoogle;
+    };
     
-    // --- Lógica del Asistente de Voz (MEJORADA) ---
+    // --- Lógica del Asistente de Voz ---
     const resetUI = () => {
         botonHablar.textContent = '🎤 Hablar';
         isProcessing = false;
     };
 
     botonHablar.addEventListener('click', () => {
-        if (isProcessing) return; // <-- Evita hacer clic mientras se procesa
+        if (isProcessing) return;
         recognition.start();
         botonHablar.textContent = '🔴 Escuchando...';
         isProcessing = true;
@@ -66,7 +70,8 @@
         
         try {
             const response = await fetch(`${BACKEND_URL}/api/procesar-ia`, {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action: 'propose', userText: transcript })
             });
             const data = await response.json();
@@ -77,26 +82,23 @@
                 confirmationBox.classList.remove('hidden');
             } else {
                 resultado.textContent = `Error: ${data.error}`;
-                resetUI(); // <-- REINICIAMOS LA UI SI HAY ERROR
+                resetUI();
             }
         } catch (error) {
             console.error('Error al contactar la IA:', error);
             resultado.textContent = 'Error al procesar la solicitud. Revisa la consola.';
-            resetUI(); // <-- REINICIAMOS LA UI SI HAY ERROR
+            resetUI();
         }
     };
 
     recognition.onerror = (event) => {
         console.error('Error de voz:', event.error);
         resultado.textContent = `Error de voz: ${event.error}`;
-        resetUI(); // <-- REINICIAMOS LA UI SI HAY ERROR DE VOZ
+        resetUI();
     };
 
-    // --- ¡LA CLAVE! NUEVO OYENTE PARA CUANDO LA VOZ TERMINA ---
     recognition.onend = () => {
         console.log('Reconocimiento de voz finalizado.');
-        // No reiniciamos aquí directamente, esperamos a que el flujo de confirmación termine.
-        // Si el usuario no confirma, resetUI() se llamará desde cancelBtn.
     };
 
     // --- Lógica de Confirmación ---
@@ -106,7 +108,8 @@
         confirmationBox.classList.add('hidden');
         try {
             const response = await fetch(`${BACKEND_URL}/api/procesar-ia`, {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action: 'execute', proposal: lastProposal, token: accessToken })
             });
             const data = await response.json();
@@ -115,14 +118,14 @@
             console.error('Error al ejecutar acción:', error);
             resultado.textContent = 'Error al ejecutar la acción. Revisa la consola.';
         }
-        resetUI(); // <-- ¡REINICIAMOS LA UI DESPUÉS DE EJECUTAR!
+        resetUI();
         lastProposal = null;
     };
 
     cancelBtn.onclick = () => {
         confirmationBox.classList.add('hidden');
         resultado.textContent = 'Acción cancelada.';
-        resetUI(); // <-- ¡REINICIAMOS LA UI AL CANCELAR!
+        resetUI();
         lastProposal = null;
     };
 </script>
