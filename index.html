@@ -1,3 +1,40 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mi Asistente Personal</title>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <style>
+        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; background-color: #f0f0f0; }
+        button { padding: 15px 30px; font-size: 1em; cursor: pointer; border-radius: 10px; border: none; background-color: #007bff; color: white; margin: 5px; }
+        #botonGoogle { background-color: #4285F4; }
+        #resultado { margin-top: 20px; padding: 15px; border: 1px solid #ccc; border-radius: 5px; background-color: white; min-height: 50px; width: 80%; max-width: 400px; text-align: center; white-space: pre-line; }
+        .hidden { display: none; }
+        #confirmation-box { border: 2px solid #007bff; background-color: #e7f3ff; padding: 15px; border-radius: 10px; margin-top: 15px; }
+        #confirmation-box p { margin: 0 0 10px 0; }
+        #confirmation-box button { margin: 0 5px; }
+        #confirm-btn { background-color: #28a745; }
+        #cancel-btn { background-color: #dc3545; }
+    </style>
+</head>
+<body>
+    <h1>Mi Asistente Personal</h1>
+    <div id="auth-section">
+        <p>Para acceder a tu calendario, inicia sesión:</p>
+        <div id="botonGoogle"><button id="googleLoginBtn">Iniciar sesión con Google Calendar</button></div>
+    </div>
+    <div id="app-section" class="hidden">
+        <button id="botonHablar">🎤 Hablar</button>
+        <div id="resultado">Di algo...</div>
+        <div id="confirmation-box" class="hidden">
+            <p id="proposal-text"></p>
+            <button id="confirm-btn">✅ Confirmar</button>
+            <button id="cancel-btn">❌ Cancelar</button>
+        </div>
+    </div>
+
+<!-- ¡LA CLAVE! El script va al final del body -->
 <script>
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) { alert('Tu navegador no soporta la API de voz. Prueba en Chrome.'); }
@@ -21,7 +58,6 @@
     let lastProposal = null;
     let isProcessing = false;
 
-    // --- Lógica de Google Sign-In ---
     function iniciarSesionConGoogle() {
         const client = google.accounts.oauth2.initTokenClient({
             client_id: GOOGLE_CLIENT_ID,
@@ -30,8 +66,7 @@
                 console.log('Access token recibido:', tokenResponse.access_token);
                 accessToken = tokenResponse.access_token;
                 const res = await fetch(`${BACKEND_URL}/api/procesar-ia`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ action: 'login', token: tokenResponse.access_token })
                 });
                 const data = await res.json();
@@ -51,7 +86,6 @@
         document.getElementById('googleLoginBtn').onclick = iniciarSesionConGoogle;
     };
     
-    // --- Lógica del Asistente de Voz ---
     const resetUI = () => {
         botonHablar.textContent = '🎤 Hablar';
         isProcessing = false;
@@ -70,8 +104,7 @@
         
         try {
             const response = await fetch(`${BACKEND_URL}/api/procesar-ia`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action: 'propose', userText: transcript })
             });
             const data = await response.json();
@@ -101,15 +134,13 @@
         console.log('Reconocimiento de voz finalizado.');
     };
 
-    // --- Lógica de Confirmación ---
     confirmBtn.onclick = async () => {
         if (!lastProposal) return;
         resultado.textContent = 'Ejecutando acción...';
         confirmationBox.classList.add('hidden');
         try {
             const response = await fetch(`${BACKEND_URL}/api/procesar-ia`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action: 'execute', proposal: lastProposal, token: accessToken })
             });
             const data = await response.json();
@@ -129,3 +160,6 @@
         lastProposal = null;
     };
 </script>
+
+</body>
+</html>
