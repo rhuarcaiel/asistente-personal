@@ -11,7 +11,6 @@ export default async function (req, res) {
     if (req.method === 'OPTIONS') return res.status(200).end();
     if (req.method !== 'POST') return res.status(405).json({ error: 'Método no permitido' });
 
-    // Leer y parsear el cuerpo de la petición
     let body;
     try {
         const chunks = [];
@@ -21,26 +20,23 @@ export default async function (req, res) {
         return res.status(400).json({ error: 'JSON inválido' });
     }
 
-    // --- CASO 1: Petición de Login (Solo viene el access_token) ---
+    // --- CASO 1: Petición de Login ---
     if (body.access_token && !body.userText) {
         try {
             const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
                 headers: { Authorization: `Bearer ${body.access_token}` }
             });
             if (!userInfoResponse.ok) throw new Error('Token inválido');
-
             const userInfo = await userInfoResponse.json();
             return res.status(200).json({ message: 'Login correcto', user: userInfo.email });
-
         } catch (error) {
             return res.status(401).json({ success: false, error: 'Token de acceso inválido' });
         }
     }
 
-    // --- CASO 2: Petición del Asistente de Voz (Viene userText) ---
+    // --- CASO 2: Petición del Asistente de Voz ---
     if (body.userText) {
         try {
-            // 1. Pedimos a OpenAI que estructure la tarea
             const completion = await openai.chat.completions.create({
                 model: 'gpt-4o-mini',
                 messages: [
@@ -51,16 +47,23 @@ export default async function (req, res) {
             });
             const aiResponse = JSON.parse(completion.choices[0].message.content);
 
-            // 2. Si la acción es crear, usamos el token para crear el evento en Calendar
-            if (aiResponse.accion.includes('recordatorio') || aiResponse.accion.includes('agregar') || aiResponse.accion.includes('crear')) {
+            // --- CAMBIO CLAVE AQUÍ: Añadimos "recordar" a la condición ---
+            if (aiResponse.accion && (aiResponse.accion.includes('recordar') || aiResponse.accion.includes('recordatorio') || aiResponse.accion.includes('agregar') || aiResponse.accion.includes('crear'))) {
                 if (!body.token) {
                     return res.status(400).json({ success: false, error: 'No se proporcionó token de Google.' });
                 }
 
+                // OJO: "mañana" no es una fecha válida. Tenemos que convertirla.
+                // Por ahora, pondremos la fecha de hoy como placeholder.
+                const today = new Date();
+                const tomorrow = new Date(today);
+                tomorrow.setDate(today.getDate() + 1);
+                const formattedDate = tomorrow.toISOString().split('T')[0]; // Formato YYYY-MM-DD
+
                 const event = {
                     summary: aiResponse.tarea,
-                    start: { dateTime: `${aiResponse.fecha}T${aiResponse.hora}:00`, timeZone: 'Europe/Madrid' },
-                    end: { dateTime: `${aiResponse.fecha}T${aiResponse.hora}:00`, timeZone: 'Europe/Madrid' },
+                    start: { dateTime: `${formattedDate}T${aiResponse.hora}:00`, timeZone: 'Europe/Madrid' },
+                    end: { dateTime: `${formattedDate}T${aiResponse.hora}:00`, timeZone: 'Europe/Madrid' },
                 };
 
                 const calendarResponse = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
@@ -78,8 +81,7 @@ export default async function (req, res) {
                 return res.status(200).json({ success: true, message: `Evento "${createdEvent.summary}" creado en tu calendario.` });
 
             } else {
-                // Si no es una acción de crear, devolvemos solo la respuesta de la IA
-                return res.status(200).json(aiResponse);
+                return res.status(200).json({ success: false, error: 'No se reconoció una acción de crear o recordar.' });
             }
 
         } catch (error) {
@@ -88,6 +90,5 @@ export default async function (req, res) {
         }
     }
 
-    // --- Si no es ninguna de las anteriores ---
     return res.status(400).json({ error: 'Petición no válida' });
 }
