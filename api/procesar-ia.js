@@ -1,9 +1,7 @@
 import { OpenAI } from 'openai';
-import { OAuth2Client } from 'google-auth-library';
+import fetch from 'node-fetch'; // Importamos node-fetch
 
-// Configuración de clientes
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 export default async function handler(req, res) {
   // Cabeceras CORS
@@ -14,23 +12,35 @@ export default async function handler(req, res) {
 
   if (req.method === 'OPTIONS') { res.status(200).end(); return; }
 
-  // --- NUEVO: LÓGICA DE VERIFICACIÓN ---
-  if (req.body && req.body.token) {
+  // --- NUEVA LÓGICA: Verificar ACCESS_TOKEN y Acceder a Calendar ---
+  if (req.body && req.body.access_token) {
     try {
-      const ticket = await googleClient.verifyIdToken({
-        idToken: req.body.token,
-        audience: process.env.GOOGLE_CLIENT_ID, // El ID de cliente de tu app
+      const token = req.body.access_token;
+
+      // 1. Obtener info del usuario para verificar el token
+      const userInfoResponse = await fetch(`https://www.googleapis.com/oauth2/v3/userinfo`, {
+        headers: { Authorization: `Bearer ${token}` }
       });
-      const payload = ticket.getPayload();
-      console.log('Usuario verificado:', payload.email);
+      if (!userInfoResponse.ok) throw new Error('Token inválido al obtener userinfo.');
+      const userInfo = await userInfoResponse.json();
+
+      // 2. Verificar acceso a Calendar API (esto confirma que el scope es correcto)
+      const calendarResponse = await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!calendarResponse.ok) throw new Error('No se pudo acceder a Calendar API.');
+
+      console.log('Usuario autenticado con permisos de Calendar:', userInfo.email);
       
-      // Si el token es válido, respondemos con un 200 y los datos del usuario.
-      // El frontend usará esta respuesta para saber que el login fue exitoso.
-      return res.status(200).json({ message: 'Login exitoso', user: payload.email });
+      return res.status(200).json({
+        message: 'Acceso a Calendar correcto',
+        user: userInfo.email,
+        access_token: token // Devolvemos el token para poder usarlo luego
+      });
 
     } catch (error) {
-      console.error('Error al verificar el token:', error);
-      return res.status(401).json({ error: 'Token inválido' });
+      console.error('Error al verificar access_token:', error);
+      return res.status(401).json({ error: 'Token de acceso inválido o expirado' });
     }
   }
 
@@ -43,7 +53,7 @@ export default async function handler(req, res) {
   try {
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini", messages: [
-        { role: "system", content: `Eres un asistente experto en extraer información...` },
+        { role: "system", content: `Eres un asistente experto...` },
         { role: "user", content: userText }
       ], response_format: { type: "json_object" }
     });
