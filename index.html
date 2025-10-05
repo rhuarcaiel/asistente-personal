@@ -83,30 +83,37 @@
         });
 
         recognition.onresult = async (event) => {
-            const transcript = event.results[0][0].transcript;
-            resultado.textContent = `Has dicho: "${transcript}".\n\nProcesando con IA...`;
-            botonHablar.textContent = '🎤 Hablar';
+    const transcript = event.results[0][0].transcript;
+    resultado.textContent = `Has dicho: "${transcript}".\n\nProcesando con IA...`;
+    botonHablar.textContent = '🎤 Hablar';
 
-            try {
-                const response = await fetch(`${BACKEND_URL}/api/procesar-ia`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ userText: transcript }),
-                });
-                const data = await response.json();
-                resultado.textContent = `Acción: ${data.accion}\nTarea: ${data.tarea}\nFecha: ${data.fecha || 'No especificada'}\nHora: ${data.hora || 'No especificada'}`;
-            } catch (error) {
-                console.error('Error al contactar la IA:', error);
-                resultado.textContent = 'Error al procesar la solicitud. Revisa la consola.';
-            }
-        };
+    try {
+        const response = await fetch(`${BACKEND_URL}/api/procesar-ia`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            // <-- CAMBIO CLAVE AQUÍ: Enviamos el texto Y el token
+            body: JSON.stringify({ 
+                userText: transcript,
+                token: accessToken // Usamos el token que guardamos al iniciar sesión
+            }),
+        });
+        const data = await response.json();
+        
+        // <-- CAMBIO CLAVE AQUÍ: Mostramos la respuesta final del backend
+        if (data.success) {
+            resultado.textContent = `✅ ${data.message}`;
+        } else {
+            resultado.textContent = `❌ Error: ${data.error}`;
+        }
 
-        recognition.onerror = (event) => {
-            resultado.textContent = `Error de voz: ${event.error}`;
-            botonHablar.textContent = '🎤 Hablar';
-        };
+    } catch (error) {
+        console.error('Error al contactar la IA:', error);
+        resultado.textContent = 'Error al procesar la solicitud. Revisa la consola.';
+    }
+};
     </script>
 </body>
 </html>
+
 
 
