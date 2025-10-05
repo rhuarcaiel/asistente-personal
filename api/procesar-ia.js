@@ -1,78 +1,81 @@
-// api/procesar-ia.js
 import { OpenAI } from 'openai';
 
-// Vercel usa Node.js 18+ → fetch ya está disponible globalmente
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 export default async function (req, res) {
-  // CORS
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    // Cabeceras CORS
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
+    if (req.method === 'OPTIONS') return res.status(200).end();
+    if (req.method !== 'POST') return res.status(405).json({ error: 'Método no permitido' });
 
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Método no permitido' });
-  }
-
-  // Leer y parsear el cuerpo de la petición
-  let body;
-  try {
-    const chunks = [];
-    for await (const chunk of req) {
-      chunks.push(chunk);
-    }
-    const data = Buffer.concat(chunks).toString();
-    body = JSON.parse(data || '{}');
-  } catch (e) {
-    return res.status(400).json({ error: 'JSON inválido' });
-  }
-
-  // --- Verificar token de Google ---
-  if (body.access_token) {
+    // Leer y parsear el cuerpo de la petición
+    let body;
     try {
-      const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-        headers: { Authorization: `Bearer ${body.access_token}` }
-      });
-      if (!userInfoResponse.ok) throw new Error('Token inválido');
-
-      const calendarResponse = await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList', {
-        headers: { Authorization: `Bearer ${body.access_token}` }
-      });
-      if (!calendarResponse.ok) throw new Error('Sin acceso a Calendar');
-
-      const userInfo = await userInfoResponse.json();
-      return res.status(200).json({
-        message: 'Acceso a Calendar correcto',
-        user: userInfo.email
-      });
-    } catch (error) {
-      console.error('Error al verificar token:', error.message);
-      return res.status(401).json({ error: 'Token inválido o sin permisos para Calendar' });
+        const chunks = [];
+        for await (const chunk of req) chunks.push(chunk);
+        body = JSON.parse(Buffer.concat(chunks).toString());
+    } catch {
+        return res.status(400).json({ error: 'JSON inválido' });
     }
-  }
 
-  // --- Procesar con OpenAI ---
-  if (body.userText) {
+    // --- LÓGICA PRINCIPAL ---
     try {
-      const completion = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: 'Eres un asistente experto que devuelve JSON con { "accion": "...", "tarea": "...", "fecha": "...", "hora": "..." }' },
-          { role: 'user', content: body.userText }
-        ],
-        response_format: { type: 'json_object' }
-      });
-      const aiResponse = JSON.parse(completion.choices[0].message.content);
-      return res.status(200).json(aiResponse);
-    } catch (error) {
-      console.error('Error OpenAI:', error);
-      return res.status(500).json({ error: 'Fallo al procesar con IA' });
-    }
-  }
+        // 1. Pedimos a OpenAI que estructure la tarea
+        const completion = await openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            messages: [
+                { role: 'system', content: 'Devuelve JSON con { "accion": "...", "tarea": "...", "fecha": "...", "hora": "..." }' },
+                { role: 'user', content: body.userText }
+            ],
+            response_format: { type: 'json_object' }
+        });
+        const aiResponse = JSON.parse(completion.choices[0].message.content);
 
-  return res.status(400).json({ error: 'Falta access_token o userText' });
+        // 2. Si la acción es crear, usamos el token para crear el evento en Calendar
+        if (aiResponse.accion.includes('recordatorio') || aiResponse.accion.includes('agregar') || aiResponse.accion.includes('crear')) {
+            if (!body.token) {
+                return res.status(400).json({ success: false, error: 'No se proporcionó token de Google.' });
+            }
+
+            const event = {
+                summary: aiResponse.tarea,
+                start: {
+                    dateTime: `${aiResponse.fecha}T${aiResponse.hora}:00`,
+                    timeZone: 'Europe/Madrid', // <-- ¡IMPORTANTE! Ajusta tu zona horaria
+                },
+                end: {
+                    dateTime: `${aiResponse.fecha}T${aiResponse.hora}:00`, // Poner la misma hora por ahora
+                    timeZone: 'Europe/Madrid',
+                },
+            };
+
+            const calendarResponse = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${body.token}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(event),
+            });
+
+            if (!calendarResponse.ok) {
+                const errorData = await calendarResponse.json();
+                throw new Error(`Error de Calendar: ${errorData.error.message}`);
+            }
+
+            const createdEvent = await calendarResponse.json();
+            return res.status(200).json({ success: true, message: `Evento "${createdEvent.summary}" creado en tu calendario.` });
+
+        } else {
+            // Si no es una acción de crear, devolvemos solo la respuesta de la IA
+            return res.status(200).json(aiResponse);
+        }
+
+    } catch (error) {
+        console.error('Error en el backend:', error);
+        return res.status(500).json({ success: false, error: error.message });
+    }
 }
