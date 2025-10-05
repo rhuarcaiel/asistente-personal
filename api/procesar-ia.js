@@ -41,7 +41,7 @@ export default async function (req, res) {
         }
     }
 
-    // --- CASO 2: PROPUESTA DE ACCIÓN ---
+    // --- CASO 2: PROPUESTA DE ACCIÓN (PROMPT CORREGIDO) ---
     if (body.action === 'propose' && body.userText) {
         try {
             const today = new Date();
@@ -54,16 +54,17 @@ export default async function (req, res) {
                 messages: [
                     {
                         role: 'system',
-                        content: `Eres un asistente de calendario experto. La fecha de hoy es ${today.toISOString().split('T')[0]}. El usuario te pide que hagas algo. Analiza su petición y determina si es para CREAR un evento o ELIMINAR uno o VARIOS eventos. Si es para eliminar, devuelve un rango de fechas. Devuelve ÚNICAMENTE un objeto JSON con esta estructura:
-                        {
-                          "intent": ("create" o "delete_bulk"),
-                          "summary_filter": (string o null, una palabra clave para filtrar, ej: "jefe"),
-                          "start_date": (string, YYYY-MM-DD),
-                          "end_date": (string, YYYY-MM-DD),
-                          "timezone": (string, "Europe/Madrid")
-                        }
-                        Ejemplo 1: "elimina todos los eventos de mañana" -> { "intent": "delete_bulk", "summary_filter": null, "start_date": "${tomorrowStr}", "end_date": "${tomorrowStr}" }
-                        Ejemplo 2: "elimina las reuniones con el jefe de la semana que viene" -> { "intent": "delete_bulk", "summary_filter": "jefe", "start_date": "YYYY-MM-DD", "end_date": "YYYY-MM-DD" }`
+                        content: `Eres un asistente de calendario experto. La fecha de hoy es ${today.toISOString().split('T')[0]}. El usuario te pide que hagas algo. Analiza su petición y determina si es para CREAR un evento o ELIMINAR uno o VARIOS eventos. Devuelve ÚNICAMENTE un objeto JSON con la siguiente estructura:
+                            
+                            SI ES PARA CREAR:
+                            { "intent": "create", "summary": (string, la descripción), "start_datetime": (string, YYYY-MM-DDTHH:MM:SS), "is_recurring": (booleano), "recurrence": (objeto o null), "timezone": (string, "Europe/Madrid") }
+                            
+                            SI ES PARA ELIMINAR VARIOS:
+                            { "intent": "delete_bulk", "summary_filter": (string o null), "start_date": (string, YYYY-MM-DD), "end_date": (string, YYYY-MM-DD), "timezone": (string, "Europe/Madrid") }
+                            
+                            Ejemplo 1: "reunión mañana a las 10" -> { "intent": "create", "summary": "reunión", "start_datetime": "2024-10-28T10:00:00", "is_recurring": false, "recurrence": null, "timezone": "Europe/Madrid" }
+                            Ejemplo 2: "elimina todos los eventos de mañana" -> { "intent": "delete_bulk", "summary_filter": null, "start_date": "${tomorrowStr}", "end_date": "${tomorrowStr}" }
+                            `
                     },
                     { role: 'user', content: body.userText }
                 ],
