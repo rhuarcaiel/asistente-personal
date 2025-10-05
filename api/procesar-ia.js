@@ -3,27 +3,45 @@ import { OpenAI } from 'openai';
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 export default async function (req, res) {
-    // --- CABECERAS CORS ---
+    // --- CABECERAS CORS (¡FUNDAMENTAL! SE APLICAN A TODAS LAS PETICIONES) ---
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    if (req.method === 'OPTIONS') return res.status(200).end();
-    if (req.method !== 'POST') return res.status(405).json({ error: 'Método no permitido' });
 
+    if (req.method === 'OPTIONS') {
+        return res.status(200).end();
+    }
+    if (req.method !== 'POST') {
+        return res.status(405).json({ error: 'Método no permitido' });
+    }
+
+    // --- LECTURA DEL CUERPO DE LA PETICIÓN ---
     let body;
-    try { const chunks = []; for await (const chunk of req) chunks.push(chunk); body = JSON.parse(Buffer.concat(chunks).toString()); } catch { return res.status(400).json({ error: 'JSON inválido' }); }
+    try {
+        const chunks = [];
+        for await (const chunk of req) {
+            chunks.push(chunk);
+        }
+        body = JSON.parse(Buffer.concat(chunks).toString());
+    } catch {
+        return res.status(400).json({ error: 'JSON inválido' });
+    }
 
     // --- CASO 1: LOGIN ---
     if (body.action === 'login' && body.token) {
         try {
-            const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', { headers: { Authorization: `Bearer ${body.token}` } });
+            const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                headers: { Authorization: `Bearer ${body.token}` }
+            });
             if (!userInfoResponse.ok) throw new Error('Token inválido');
             const userInfo = await userInfoResponse.json();
             return res.status(200).json({ message: 'Login correcto', user: userInfo.email });
-        } catch (error) { return res.status(401).json({ success: false, error: 'Token de acceso inválido' }); }
+        } catch (error) {
+            return res.status(401).json({ success: false, error: 'Token de acceso inválido' });
+        }
     }
 
-    // --- CASO 2: PROPUESTA DE ACCIÓN (MEJORADA) ---
+    // --- CASO 2: PROPUESTA DE ACCIÓN ---
     if (body.action === 'propose' && body.userText) {
         try {
             const today = new Date();
@@ -58,22 +76,38 @@ export default async function (req, res) {
         }
     }
 
-    // --- CASO 3: EJECUCIÓN DE LA ACCIÓN (MEJORADA) ---
+    // --- CASO 3: EJECUCIÓN DE LA ACCIÓN ---
     if (body.action === 'execute' && body.proposal && body.token) {
         const proposal = body.proposal;
         const token = body.token;
 
         if (proposal.intent === 'create') {
-            // ... (lógica de creación, igual que antes) ...
-            const event = { summary: proposal.summary, start: { dateTime: proposal.start_datetime, timeZone: proposal.timezone }, end: { dateTime: new Date(new Date(proposal.start_datetime).getTime() + 60 * 60 * 1000).toISOString(), timeZone: proposal.timezone } };
-            if (proposal.is_recurring && proposal.recurrence) { let rrule = `RRULE:FREQ=${proposal.recurrence.frequency}`; if (proposal.recurrence.day_of_week) rrule += `;BYDAY=${proposal.recurrence.day_of_week.slice(0, 2).toUpperCase()}`; event.recurrence = [rrule]; }
-            const calendarResponse = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', { method: 'POST', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(event) });
-            if (!calendarResponse.ok) { const errorBody = await calendarResponse.text(); return res.status(500).json({ success: false, error: `Error de Google Calendar: ${calendarResponse.status}. Detalles: ${errorBody}` }); }
-            const createdEvent = await calendarResponse.json();
-            return res.status(200).json({ success: true, message: `Evento "${createdEvent.summary}" creado.` });
-
+            try {
+                const event = {
+                    summary: proposal.summary,
+                    start: { dateTime: proposal.start_datetime, timeZone: proposal.timezone },
+                    end: { dateTime: new Date(new Date(proposal.start_datetime).getTime() + 60 * 60 * 1000).toISOString(), timeZone: proposal.timezone },
+                };
+                if (proposal.is_recurring && proposal.recurrence) {
+                    let rrule = `RRULE:FREQ=${proposal.recurrence.frequency}`;
+                    if (proposal.recurrence.day_of_week) {
+                        rrule += `;BYDAY=${proposal.recurrence.day_of_week.slice(0, 2).toUpperCase()}`;
+                    }
+                    event.recurrence = [rrule];
+                }
+                const calendarResponse = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+                    method: 'POST', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(event)
+                });
+                if (!calendarResponse.ok) {
+                    const errorBody = await calendarResponse.text();
+                    return res.status(500).json({ success: false, error: `Error de Google Calendar: ${calendarResponse.status}. Detalles: ${errorBody}` });
+                }
+                const createdEvent = await calendarResponse.json();
+                return res.status(200).json({ success: true, message: `Evento "${createdEvent.summary}" creado.` });
+            } catch (error) {
+                return res.status(500).json({ success: false, error: 'Error al crear el evento.' });
+            }
         } else if (proposal.intent === 'delete_bulk') {
-            // --- NUEVA LÓGICA DE ELIMINACIÓN MASIVA ---
             try {
                 console.log(`Buscando eventos para eliminar del ${proposal.start_date} al ${proposal.end_date}`);
                 const searchUrl = `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${proposal.start_date}T00:00:00Z&timeMax=${proposal.end_date}T23:59:59Z`;
