@@ -34,24 +34,25 @@ export default async function (req, res) {
         }
     }
 
-    // --- CASO 2: Petición del Asistente de Voz (MÁS INTELIGENTE) ---
+    // --- CASO 2: Petición del Asistente de Voz (CON INTENCIÓN IMPLÍCITA) ---
     if (body.userText) {
         try {
-            // --- NUEVO PROMPT MÁS PODEROSO ---
+            // --- NUEVO PROMPT "CONSCIENTE DEL CONTEXTO" ---
             const completion = await openai.chat.completions.create({
                 model: 'gpt-4o-mini',
                 messages: [
                     {
                         role: 'system',
-                        content: `Eres un asistente experto en calendarización. Analiza el texto del usuario y extrae la información para crear un evento de calendario. Devuelve ÚNICAMENTE un objeto JSON con la siguiente estructura:
+                        content: `Eres un asistente de calendario experto. El usuario siempre te habla para crear eventos. Tu tarea es interpretar su lenguaje natural, que puede ser implícito, y extraer toda la información necesaria para crear un evento en Google Calendar. No necesitan decir 'recuérdame' o 'anota'. Asume que su intención es siempre añadir algo a su agenda. Devuelve ÚNICAMENTE un objeto JSON con la siguiente estructura:
                         {
                           "is_recurring": (booleano, true si es un evento recurrente como "todos los viernes"),
                           "summary": (string, la descripción del evento),
-                          "start_datetime": (string, la fecha y hora de inicio en formato YYYY-MM-DDTHH:MM:SS, calculando "mañana", "próximo viernes", etc.),
+                          "start_datetime": (string, la fecha y hora de inicio en formato YYYY-MM-DDTHH:MM:SS, calculando "mañana", "próximo viernes", etc. basándote en la fecha actual),
                           "timezone": (string, "Europe/Madrid" por defecto),
                           "recurrence": (objeto o null. Si es recurrente, un objeto con "frequency" ("DAILY", "WEEKLY", "MONTHLY") y "day_of_week" ("MONDAY", "FRIDAY", etc.). Si no es recurrente, null)
                         }
-                        Ejemplo: "recuérdame todos los viernes a las 10 mandar un correo" -> { "is_recurring": true, "summary": "mandar un correo", ... "recurrence": {"frequency": "WEEKLY", "day_of_week": "FRIDAY"} }`
+                        Ejemplo 1: "todos los viernes a las 10 mandar un correo" -> { "is_recurring": true, "summary": "mandar un correo", "start_datetime": "2024-05-24T10:00:00", "recurrence": {"frequency": "WEEKLY", "day_of_week": "FRIDAY"} }
+                        Ejemplo 2: "avisame mañana a las 8 para sacar a Dama" -> { "is_recurring": false, "summary": "sacar a Dama", "start_datetime": "2024-05-23T20:00:00", "recurrence": null }`
                     },
                     { role: 'user', content: body.userText }
                 ],
@@ -59,9 +60,9 @@ export default async function (req, res) {
             });
             const aiResponse = JSON.parse(completion.choices[0].message.content);
 
-            // Si la IA no reconoce una acción de crear, salimos.
+            // Si la IA no puede extraer un evento, lo indicamos.
             if (!aiResponse.summary) {
-                return res.status(200).json({ success: false, error: 'No se reconoció una acción de crear o recordar.' });
+                return res.status(200).json({ success: false, error: 'No he podido entender un evento claro en tu petición.' });
             }
 
             if (!body.token) {
@@ -75,18 +76,15 @@ export default async function (req, res) {
                     dateTime: aiResponse.start_datetime,
                     timeZone: aiResponse.timezone,
                 },
-                // Hacemos que el evento dure 1 hora por defecto
                 end: {
                     dateTime: new Date(new Date(aiResponse.start_datetime).getTime() + 60 * 60 * 1000).toISOString(),
                     timeZone: aiResponse.timezone,
                 },
             };
 
-            // --- NUEVO: AÑADIMOS LA RECURRENCIA SI ES NECESARIO ---
             if (aiResponse.is_recurring && aiResponse.recurrence) {
                 let rrule = `RRULE:FREQ=${aiResponse.recurrence.frequency}`;
                 if (aiResponse.recurrence.day_of_week) {
-                    // Google Calendar usa las dos primeras letras en inglés, ej: MO, TU, FR
                     rrule += `;BYDAY=${aiResponse.recurrence.day_of_week.slice(0, 2).toUpperCase()}`;
                 }
                 event.recurrence = [rrule];
@@ -105,8 +103,8 @@ export default async function (req, res) {
 
             const createdEvent = await calendarResponse.json();
             const successMessage = aiResponse.is_recurring 
-                ? `Evento recurrente "${createdEvent.summary}" creado en tu calendario.`
-                : `Evento "${createdEvent.summary}" creado en tu calendario.`;
+                ? `Evento recurrente "${createdEvent.summary}" creado.`
+                : `Evento "${createdEvent.summary}" creado.`;
 
             return res.status(200).json({ success: true, message: successMessage });
 
