@@ -26,94 +26,94 @@
         <div id="resultado">Di algo...</div>
     </div>
 
-    <script>
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (!SpeechRecognition) { alert('Tu navegador no soporta la API de voz. Prueba en Chrome.'); }
+<script>
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) { alert('Tu navegador no soporta la API de voz. Prueba en Chrome.'); }
 
-        const recognition = new SpeechRecognition();
-        recognition.lang = "es-ES";
-        recognition.interimResults = false;
+    const recognition = new SpeechRecognition();
+    recognition.lang = "es-ES";
+    recognition.interimResults = false;
 
-        const botonHablar = document.getElementById('botonHablar');
-        const resultado = document.getElementById('resultado');
-        const authSection = document.getElementById('auth-section');
-        const appSection = document.getElementById('app-section');
+    const botonHablar = document.getElementById('botonHablar');
+    const resultado = document.getElementById('resultado');
+    const authSection = document.getElementById('auth-section');
+    const appSection = document.getElementById('app-section');
 
-        const GOOGLE_CLIENT_ID = '730540890311-2n0tj0q7f5dp3v8j6h16n1rmkjqt8m98.apps.googleusercontent.com';
-        const BACKEND_URL = 'https://asistente-personal-eta.vercel.app';
-        let accessToken = ''; // Variable global para guardar el token
+    const GOOGLE_CLIENT_ID = '730540890311-2n0tj0q7f5dp3v8j6h16n1rmkjqt8m98.apps.googleusercontent.com';
+    const BACKEND_URL = 'https://asistente-personal-eta.vercel.app';
+    let accessToken = '';
 
-        // === Nuevo flujo OAuth 2.0 con scopes (La solución de tu amigo) ===
-        function iniciarSesionConGoogle() {
-            const client = google.accounts.oauth2.initTokenClient({
-                client_id: GOOGLE_CLIENT_ID,
-                scope: 'https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/userinfo.email',
-                callback: async (tokenResponse) => {
-                    console.log('Access token recibido:', tokenResponse.access_token);
-                    accessToken = tokenResponse.access_token; // Guardamos el token
+    // === Nuevo flujo OAuth 2.0 con scopes ===
+    function iniciarSesionConGoogle() {
+        const client = google.accounts.oauth2.initTokenClient({
+            client_id: GOOGLE_CLIENT_ID,
+            scope: 'https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/userinfo.email',
+            callback: async (tokenResponse) => {
+                console.log('Access token recibido:', tokenResponse.access_token);
+                accessToken = tokenResponse.access_token;
 
-                    const res = await fetch(`${BACKEND_URL}/api/procesar-ia`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ access_token: tokenResponse.access_token })
-                    });
+                const res = await fetch(`${BACKEND_URL}/api/procesar-ia`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ access_token: tokenResponse.access_token })
+                });
 
-                    const data = await res.json();
-                    if (data.message) {
-                        authSection.classList.add('hidden');
-                        appSection.classList.remove('hidden');
-                        resultado.textContent = `Acceso concedido a Calendar para ${data.user}`;
-                    } else {
-                        resultado.textContent = 'Error al iniciar sesión con Google Calendar: ' + data.error;
-                    }
+                const data = await res.json();
+                if (data.message) {
+                    authSection.classList.add('hidden');
+                    appSection.classList.remove('hidden');
+                    resultado.textContent = `Acceso concedido a Calendar para ${data.user}`;
+                } else {
+                    resultado.textContent = 'Error al iniciar sesión con Google Calendar: ' + data.error;
                 }
-            });
-            client.requestAccessToken();
-        }
-
-        window.onload = () => {
-            document.getElementById('googleLoginBtn').onclick = iniciarSesionConGoogle;
-        };
-        
-        // --- Lógica del Asistente de Voz (sin cambios) ---
-        botonHablar.addEventListener('click', () => {
-            recognition.start();
-            botonHablar.textContent = '🔴 Escuchando...';
-            resultado.textContent = 'Estoy escuchando...';
+            }
         });
-
-        recognition.onresult = async (event) => {
-    const transcript = event.results[0][0].transcript;
-    resultado.textContent = `Has dicho: "${transcript}".\n\nProcesando con IA...`;
-    botonHablar.textContent = '🎤 Hablar';
-
-    try {
-        const response = await fetch(`${BACKEND_URL}/api/procesar-ia`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            // <-- CAMBIO CLAVE AQUÍ: Enviamos el texto Y el token
-            body: JSON.stringify({ 
-                userText: transcript,
-                token: accessToken // Usamos el token que guardamos al iniciar sesión
-            }),
-        });
-        const data = await response.json();
-        
-        // <-- CAMBIO CLAVE AQUÍ: Mostramos la respuesta final del backend
-        if (data.success) {
-            resultado.textContent = `✅ ${data.message}`;
-        } else {
-            resultado.textContent = `❌ Error: ${data.error}`;
-        }
-
-    } catch (error) {
-        console.error('Error al contactar la IA:', error);
-        resultado.textContent = 'Error al procesar la solicitud. Revisa la consola.';
+        client.requestAccessToken();
     }
-};
-    </script>
+
+    window.onload = () => {
+        document.getElementById('googleLoginBtn').onclick = iniciarSesionConGoogle;
+    };
+    
+    // --- Lógica del Asistente de Voz (actualizada) ---
+    botonHablar.addEventListener('click', () => {
+        recognition.start();
+        botonHablar.textContent = '🔴 Escuchando...';
+        resultado.textContent = 'Estoy escuchando...';
+    });
+
+    recognition.onresult = async (event) => {
+        const transcript = event.results[0][0].transcript;
+        resultado.textContent = `Has dicho: "${transcript}".\n\nProcesando con IA...`;
+        botonHablar.textContent = '🎤 Hablar';
+
+        try {
+            const response = await fetch(`${BACKEND_URL}/api/procesar-ia`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    userText: transcript,
+                    token: accessToken 
+                }),
+            });
+            const data = await response.json();
+            
+            if (data.success) {
+                resultado.textContent = `✅ ${data.message}`;
+            } else {
+                resultado.textContent = `❌ Error: ${data.error}`;
+            }
+
+        } catch (error) {
+            console.error('Error al contactar la IA:', error);
+            resultado.textContent = 'Error al procesar la solicitud. Revisa la consola.';
+        }
+    };
+
+    recognition.onerror = (event) => {
+        resultado.textContent = `Error de voz: ${event.error}`;
+        botonHablar.textContent = '🎤 Hablar';
+    };
+</script>
 </body>
 </html>
-
-
-
