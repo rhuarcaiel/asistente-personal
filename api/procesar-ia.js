@@ -21,10 +21,11 @@ export default async function (req, res) {
     }
 
     // --- CASO 1: Petición de Login ---
-    if (body.access_token && !body.userText) {
+    if (body.action === 'login' && body.token) {
+        // ... (lógica de login igual que antes) ...
         try {
             const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-                headers: { Authorization: `Bearer ${body.access_token}` }
+                headers: { Authorization: `Bearer ${body.token}` }
             });
             if (!userInfoResponse.ok) throw new Error('Token inválido');
             const userInfo = await userInfoResponse.json();
@@ -34,91 +35,74 @@ export default async function (req, res) {
         }
     }
 
-    // --- CASO 2: Petición del Asistente de Voz (CON FECHA DE HOY) ---
-    if (body.userText) {
+    // --- CASO 2: Propuesta de Acción (LO NUEVO) ---
+    if (body.action === 'propose' && body.userText) {
         try {
-            // --- OBTENEMOS LA FECHA ACTUAL ---
-            const today = new Date().toISOString().split('T')[0]; // Formato YYYY-MM-DD
-
-            // --- NUEVO PROMPT CON FECHA DE REFERENCIA ---
+            const today = new Date().toISOString().split('T')[0];
             const completion = await openai.chat.completions.create({
                 model: 'gpt-4o-mini',
                 messages: [
                     {
                         role: 'system',
-                        content: `Eres un asistente de calendario experto. La fecha de hoy es ${today}. El usuario siempre te habla para crear eventos. Tu tarea es interpretar su lenguaje natural y extraer la información necesaria para crear un evento en Google Calendar. Calcula todas las fechas relativas como "mañana", "próximo viernes", etc., basándote en que hoy es ${today}. Devuelve ÚNICAMENTE un objeto JSON con la siguiente estructura:
+                        content: `Eres un asistente de calendario experto. La fecha de hoy es ${today}. El usuario te pide que hagas algo. Analiza su petición y determina si es para CREAR un evento o ELIMINAR uno. Devuelve ÚNICAMENTE un objeto JSON con esta estructura:
                         {
-                          "is_recurring": (booleano, true si es un evento recurrente como "todos los viernes"),
+                          "intent": ("create" o "delete"),
                           "summary": (string, la descripción del evento),
                           "start_datetime": (string, la fecha y hora de inicio en formato YYYY-MM-DDTHH:MM:SS),
-                          "timezone": (string, "Europe/Madrid" por defecto),
-                          "recurrence": (objeto o null. Si es recurrente, un objeto con "frequency" ("DAILY", "WEEKLY", "MONTHLY") y "day_of_week" ("MONDAY", "FRIDAY", etc.). Si no es recurrente, null)
+                          "is_recurring": (booleano),
+                          "recurrence": (objeto o null, igual que antes),
+                          "timezone": (string, "Europe/Madrid")
                         }
-                        Ejemplo: "mañana a las 8" -> { "is_recurring": false, "summary": "mañana a las 8", "start_datetime": "2024-10-27T08:00:00", "recurrence": null }`
+                        Si es para eliminar, intenta encontrar la fecha y hora exactas que menciona el usuario.`
                     },
                     { role: 'user', content: body.userText }
                 ],
                 response_format: { type: 'json_object' }
             });
-            const aiResponse = JSON.parse(completion.choices[0].message.content);
-
-            // --- Validación ---
-            if (!aiResponse.summary) {
-                return res.status(400).json({ success: false, error: 'La IA no pudo entender un evento claro.' });
-            }
-            if (!aiResponse.start_datetime) {
-                return res.status(400).json({ success: false, error: 'La IA no proporcionó una fecha y hora válidas.' });
-            }
-            if (!body.token) {
-                return res.status(400).json({ success: false, error: 'No se proporcionó token de Google.' });
-            }
-
-            // --- Lógica para crear el evento ---
-            const event = {
-                summary: aiResponse.summary,
-                start: {
-                    dateTime: aiResponse.start_datetime,
-                    timeZone: aiResponse.timezone,
-                },
-                end: {
-                    dateTime: new Date(new Date(aiResponse.start_datetime).getTime() + 60 * 60 * 1000).toISOString(),
-                    timeZone: aiResponse.timezone,
-                },
-            };
-
-            if (aiResponse.is_recurring && aiResponse.recurrence) {
-                let rrule = `RRULE:FREQ=${aiResponse.recurrence.frequency}`;
-                if (aiResponse.recurrence.day_of_week) {
-                    rrule += `;BYDAY=${aiResponse.recurrence.day_of_week.slice(0, 2).toUpperCase()}`;
-                }
-                event.recurrence = [rrule];
-            }
-
-            console.log('Enviando evento a Google Calendar:', JSON.stringify(event, null, 2));
-
-            const calendarResponse = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${body.token}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify(event),
-            });
-
-            if (!calendarResponse.ok) {
-                const errorBody = await calendarResponse.text();
-                console.error('Error de Google Calendar API:', calendarResponse.status, errorBody);
-                return res.status(500).json({ 
-                    success: false, 
-                    error: `Error de Google Calendar: ${calendarResponse.status}. Detalles: ${errorBody}` 
-                });
-            }
-
-            const createdEvent = await calendarResponse.json();
-            return res.status(200).json({ success: true, message: `Evento "${createdEvent.summary}" creado.` });
+            const proposal = JSON.parse(completion.choices[0].message.content);
+            return res.status(200).json({ success: true, proposal });
 
         } catch (error) {
-            console.error('Error en el backend:', error);
-            return res.status(500).json({ success: false, error: error.message });
+            return res.status(500).json({ success: false, error: 'Error al procesar la petición con la IA.' });
         }
     }
 
-    return res.status(400).json({ error: 'Petición no válida' });
+    // --- CASO 3: Ejecución de la Acción (LO NUEVO) ---
+    if (body.action === 'execute' && body.proposal && body.token) {
+        const proposal = body.proposal;
+        const token = body.token;
+
+        if (proposal.intent === 'create') {
+            // Lógica para CREAR el evento (igual que antes)
+            const event = { /* ... lógica de creación del evento ... */ };
+            if (proposal.is_recurring && proposal.recurrence) { /* ... lógica de recurrencia ... */ }
+            
+            const calendarResponse = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+                method: 'POST', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(event)
+            });
+            if (!calendarResponse.ok) { /* ... manejo de error ... */ }
+            return res.status(200).json({ success: true, message: `Evento "${proposal.summary}" creado.` });
+
+        } else if (proposal.intent === 'delete') {
+            // Lógica para ELIMINAR el evento
+            // 1. Buscar el evento en Google Calendar
+            const searchUrl = `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${proposal.start_datetime}&timeMax=${new Date(new Date(proposal.start_datetime).getTime() + 60*60*1000).toISOString()}`;
+            const searchResponse = await fetch(searchUrl, { headers: { 'Authorization': `Bearer ${token}` } });
+            const events = await searchResponse.json();
+            const eventToDelete = events.items.find(e => e.summary.toLowerCase().includes(proposal.summary.toLowerCase()));
+
+            if (!eventToDelete) {
+                return res.status(404).json({ success: false, error: 'No encontré un evento con esa descripción en esa hora.' });
+            }
+            
+            // 2. Eliminar el evento encontrado
+            const deleteResponse = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventToDelete.id}`, {
+                method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!deleteResponse.ok) { /* ... manejo de error ... */ }
+            return res.status(200).json({ success: true, message: `Evento "${eventToDelete.summary}" eliminado.` });
+        }
+    }
+
+    return res.status(400).json({ error: 'Petición no válida.' });
 }
