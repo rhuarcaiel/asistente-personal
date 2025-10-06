@@ -3,25 +3,19 @@ import { OpenAI } from 'openai';
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 export default async function (req, res) {
-    // --- CABECERAS CORS (¡FUNDAMENTAL! SE APLICAN A TODAS LAS PETICIONES) ---
+    // --- CABECERAS CORS ---
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-    if (req.method === 'OPTIONS') {
-        return res.status(200).end();
-    }
-    if (req.method !== 'POST') {
-        return res.status(405).json({ error: 'Método no permitido' });
-    }
+    if (req.method === 'OPTIONS') return res.status(200).end();
+    if (req.method !== 'POST') return res.status(405).json({ error: 'Método no permitido' });
 
     // --- LECTURA DEL CUERPO DE LA PETICIÓN ---
     let body;
     try {
         const chunks = [];
-        for await (const chunk of req) {
-            chunks.push(chunk);
-        }
+        for await (const chunk of req) chunks.push(chunk);
         body = JSON.parse(Buffer.concat(chunks).toString());
     } catch {
         return res.status(400).json({ error: 'JSON inválido' });
@@ -30,9 +24,7 @@ export default async function (req, res) {
     // --- CASO 1: LOGIN ---
     if (body.action === 'login' && body.token) {
         try {
-            const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-                headers: { Authorization: `Bearer ${body.token}` }
-            });
+            const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', { headers: { Authorization: `Bearer ${body.token}` } });
             if (!userInfoResponse.ok) throw new Error('Token inválido');
             const userInfo = await userInfoResponse.json();
             return res.status(200).json({ message: 'Login correcto', user: userInfo.email });
@@ -41,7 +33,7 @@ export default async function (req, res) {
         }
     }
 
-    // --- CASO 2: PROPUESTA DE ACCIÓN (PROMPT CORREGIDO) ---
+    // --- CASO 2: PROPUESTA DE ACCIÓN ---
     if (body.action === 'propose' && body.userText) {
         try {
             const today = new Date();
