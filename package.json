@@ -3,8 +3,6 @@
   "version": "1.0.0",
   "type": "module",
   "dependencies": {
-    "openai": "^4.20.1",
-    "google-auth-library": "^9.4.0",
-    "node-fetch": "^3.3.2"
+    "openai": "^4.20.1"
   }
 }
