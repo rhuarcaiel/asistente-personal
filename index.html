@@ -137,12 +137,21 @@
         isProcessing = false;
     };
 
-    botonHablar.addEventListener('click', () => {
-        if (isProcessing) return;
+ botonHablar.addEventListener('click', () => {
+    if (!accessToken) {
+        resultado.textContent = 'Por favor, inicia sesión con Google antes de usar el asistente de voz.';
+        return;
+    }
+    if (isProcessing) return;
+
+    // --- EL TRUCO PARA ANDROID ---
+    // Forzamos un pequeño retardo para que la interfaz se estabilice antes de pedir el micrófono.
+    setTimeout(() => {
         recognition.start();
         botonHablar.textContent = '🔴 Escuchando...';
         isProcessing = true;
-    });
+    }, 300); // 300 milisegundos de retardo
+});
 
     recognition.onresult = async (event) => {
         const transcript = event.results[0][0].transcript;
@@ -210,3 +219,4 @@
 
 </body>
 </html>
+
