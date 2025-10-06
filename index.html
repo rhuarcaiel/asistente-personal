@@ -4,15 +4,58 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mi Asistente Personal</title>
+    <link rel="manifest" href="manifest.json">
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <style>
-        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; background-color: #f0f0f0; }
-        button { padding: 15px 30px; font-size: 1em; cursor: pointer; border-radius: 10px; border: none; background-color: #007bff; color: white; margin: 5px; }
+        body { 
+            font-family: sans-serif; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: flex-start; 
+            padding: 20px 10px; 
+            min-height: 100vh; 
+            margin: 0; 
+            background-color: #f0f0f0; 
+        }
+        h1 { font-size: 1.8em; text-align: center; }
+        button { 
+            padding: 18px 25px; 
+            font-size: 1.1em; 
+            cursor: pointer; 
+            border-radius: 10px; 
+            border: none; 
+            background-color: #007bff; 
+            color: white; 
+            margin: 5px; 
+            width: 90%; 
+            max-width: 400px;
+        }
         #botonGoogle { background-color: #4285F4; }
-        #resultado { margin-top: 20px; padding: 15px; border: 1px solid #ccc; border-radius: 5px; background-color: white; min-height: 50px; width: 80%; max-width: 400px; text-align: center; white-space: pre-line; }
+        #resultado { 
+            margin-top: 20px; 
+            padding: 15px; 
+            border: 1px solid #ccc; 
+            border-radius: 5px; 
+            background-color: white; 
+            min-height: 60px; 
+            width: 90%; 
+            max-width: 400px; 
+            text-align: center; 
+            white-space: pre-line; 
+            font-size: 1em;
+        }
         .hidden { display: none; }
-        #confirmation-box { border: 2px solid #007bff; background-color: #e7f3ff; padding: 15px; border-radius: 10px; margin-top: 15px; }
-        #confirmation-box p { margin: 0 0 10px 0; }
+        #confirmation-box { 
+            border: 2px solid #007bff; 
+            background-color: #e7f3ff; 
+            padding: 15px; 
+            border-radius: 10px; 
+            margin-top: 15px; 
+            width: 90%;
+            max-width: 400px;
+        }
+        #confirmation-box p { margin: 0 0 10px 0; text-align: center; }
         #confirmation-box button { margin: 0 5px; }
         #confirm-btn { background-color: #28a745; }
         #cancel-btn { background-color: #dc3545; }
@@ -52,12 +95,14 @@
     const confirmBtn = document.getElementById('confirm-btn');
     const cancelBtn = document.getElementById('cancel-btn');
 
+    // ¡IMPORTANTE! Pega aquí tus credenciales
     const GOOGLE_CLIENT_ID = '730540890311-2n0tj0q7f5dp3v8j6h16n1rmkjqt8m98.apps.googleusercontent.com';
     const BACKEND_URL = 'https://asistente-personal-eta.vercel.app';
     let accessToken = '';
     let lastProposal = null;
     let isProcessing = false;
 
+    // --- Lógica de Google Sign-In ---
     function iniciarSesionConGoogle() {
         const client = google.accounts.oauth2.initTokenClient({
             client_id: GOOGLE_CLIENT_ID,
@@ -86,6 +131,7 @@
         document.getElementById('googleLoginBtn').onclick = iniciarSesionConGoogle;
     };
     
+    // --- Lógica del Asistente de Voz ---
     const resetUI = () => {
         botonHablar.textContent = '🎤 Hablar';
         isProcessing = false;
@@ -134,6 +180,7 @@
         console.log('Reconocimiento de voz finalizado.');
     };
 
+    // --- Lógica de Confirmación ---
     confirmBtn.onclick = async () => {
         if (!lastProposal) return;
         resultado.textContent = 'Ejecutando acción...';
